@@ -1,0 +1,61 @@
+#!/bin/bash
+
+if [ $# -lt 2 ]
+then
+	printf 'Extracts files from current repo to a new repo, keeping only the history for those files. \n'
+	printf '\n' 
+	printf 'Usage: \n'
+	printf '    git-extract-files [destination-dir] [<file> ...]\n'
+	exit;
+fi
+
+TARGET=$1; shift;
+FILES_TO_KEEP=()
+
+while (( "$#" )); do
+	FILES_TO_KEEP+=("$1");
+	shift;
+done
+
+echo Creating new repo at: $TARGET
+echo Keeping files: ${FILES_TO_KEEP[@]}
+
+read -p "Continue? [y/n] " yn
+while true; do
+	case $yn in
+		[Yy]* ) break;;
+		[Nn]* ) exit;;
+		* ) echo "Please answer yes or no.";;
+	esac
+done
+
+CURRENT_DIR=`pwd`
+GREP_CMD_LIST=''
+for FILE in "${FILES_TO_KEEP[@]}"
+do
+	echo $FILE
+	GREP_CMD_LIST="$GREP_CMD_LIST | grep -v \"^$FILE\" "
+done
+
+FILTER_CMD='git filter-branch --prune-empty --index-filter '"'"'git ls-tree -r --name-only --full-tree $GIT_COMMIT '"$GREP_CMD_LIST | sed '\''s/ /\\\\ /g'\'' | xargs git rm --cached -r '"' -- --all'
+
+echo Grep command: $GREP_CMD_LIST
+echo FILTER_CMD: $FILTER_CMD
+
+
+if [ ! -d $TARGET ]; then
+    mkdir -p ${TARGET};
+fi;
+
+cd ${TARGET}
+echo pwd: `pwd`
+
+git init .
+git pull "$CURRENT_DIR"
+#echo git filter-branch --prune-empty --index-filter \'$FILTER_CMD\' -- --all
+#git filter-branch --prune-empty --index-filter \'$FILTER_CMD\' -- --all
+eval "$FILTER_CMD"
+git reset --hard
+git update-ref -d refs/original/refs/heads/master
+git reflog expire --expire=now --all
+git gc --aggressive --prune=now
